@@ -107,10 +107,10 @@ func (r *PodmanRunner) Up(ctx context.Context, name string, config string) error
 		}
 	}
 
-	// Configure environment as claude user
+	// Configure workspace as claude user
 	configCmds := []string{
 		"bash", "-c",
-		"su - claude -c 'mkdir -p ~/workspace ~/.config/claude-code && cd ~/workspace && git init'",
+		"su - claude -c 'mkdir -p ~/workspace && cd ~/workspace && git init'",
 	}
 	if err := r.SSH(ctx, name, configCmds...); err != nil {
 		_ = r.Down(context.Background(), name)

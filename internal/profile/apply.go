@@ -15,23 +15,25 @@ import (
 // Apply writes the profile's configuration into a sandbox.
 //
 // It performs the following steps (skipping optional files that are absent):
-//  1. Write base prompt + profile CLAUDE.md → ~/<configDir>/CLAUDE.md
-//  2. Copy settings.json → ~/<configDir>/settings.json
+//  1. Write base prompt + profile CLAUDE.md → ~/.claude/CLAUDE.md
+//  2. Copy settings.json → ~/.claude/settings.json
 //  3. Register MCP servers from mcp.yaml via the agent backend
 //  4. Run setup.sh on the host with helper scripts and environment variables
+//
+// Both Claude Code and OpenCode read ~/.claude/CLAUDE.md (OpenCode reads it
+// as a global fallback when no AGENTS.md exists).
 func Apply(ctx context.Context, p *Profile, runner sandbox.Runner, backend agent.Backend, sbx string, taskDir string, basePrompt string, vars map[string]string) error {
 	home := runner.UserHome()
-	configDir := backend.ConfigDir()
 
 	// 1. Write combined CLAUDE.md
 	claudemd := basePrompt + "\n\n# Profile: " + p.Name + "\n\n" + p.Claudemd
-	if err := writeToSandbox(ctx, runner, backend, sbx, claudemd, sbx+":"+home+"/"+configDir+"/CLAUDE.md"); err != nil {
+	if err := writeToSandbox(ctx, runner, sbx, claudemd, sbx+":"+home+"/.claude/CLAUDE.md"); err != nil {
 		return fmt.Errorf("writing CLAUDE.md: %w", err)
 	}
 
 	// 2. Copy settings.json if present
 	if p.Settings != "" {
-		if err := runner.Cp(ctx, sbx, p.Settings, sbx+":"+home+"/"+configDir+"/settings.json"); err != nil {
+		if err := runner.Cp(ctx, sbx, p.Settings, sbx+":"+home+"/.claude/settings.json"); err != nil {
 			return fmt.Errorf("copying settings.json: %w", err)
 		}
 		slog.Debug("Copied profile settings.json", "profile", p.Name)
@@ -39,7 +41,7 @@ func Apply(ctx context.Context, p *Profile, runner sandbox.Runner, backend agent
 
 	// Fix ownership of copied files (podman cp runs as root; on gjoll this
 	// is a harmless no-op error since the SSH user already owns the files).
-	fixCmd := "chown -R $(stat -c '%U:%G' " + home + ") " + home + "/" + configDir + " 2>/dev/null || true"
+	fixCmd := "chown -R $(stat -c '%U:%G' " + home + ") " + home + "/.claude 2>/dev/null || true"
 	_ = runner.SSH(ctx, sbx, "bash", "-c", fixCmd)
 
 	// 3. Register MCP servers from mcp.yaml
@@ -64,9 +66,8 @@ func Apply(ctx context.Context, p *Profile, runner sandbox.Runner, backend agent
 }
 
 // writeToSandbox writes content to a file in the sandbox via a temp file + cp.
-func writeToSandbox(ctx context.Context, runner sandbox.Runner, backend agent.Backend, sbx, content, dest string) error {
-	configDir := backend.ConfigDir()
-	runner.SSH(ctx, sbx, "bash", "-c", runner.AsUser("mkdir -p ~/"+configDir))
+func writeToSandbox(ctx context.Context, runner sandbox.Runner, sbx, content, dest string) error {
+	runner.SSH(ctx, sbx, "bash", "-c", runner.AsUser("mkdir -p ~/.claude"))
 
 	tmpFile, err := os.CreateTemp("", "profile-*")
 	if err != nil {

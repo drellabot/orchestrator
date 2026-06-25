@@ -400,8 +400,9 @@ func setupSandboxDefault(ctx context.Context, runner sandbox.Runner, backend age
 
 // writeSystemPrompt writes the on_init system prompt into the sandbox.
 // For claude-code: writes ~/system-prompt.md (used via --append-system-prompt-file).
-// For opencode: appends to ~/.claude/CLAUDE.md (OpenCode reads this natively
-// and has no --append-system-prompt-file equivalent).
+// For opencode: appends to ~/.claude/CLAUDE.md (OpenCode reads this as a
+// fallback when no AGENTS.md exists, and has no --append-system-prompt-file
+// equivalent).
 func writeSystemPrompt(ctx context.Context, runner sandbox.Runner, backend agent.Backend, taskName string) error {
 	tmpFile, err := os.CreateTemp("", "prompt-*.md")
 	if err != nil {
@@ -418,16 +419,14 @@ func writeSystemPrompt(ctx context.Context, runner sandbox.Runner, backend agent
 	home := runner.UserHome()
 
 	if backend.Name() == "opencode" {
-		// OpenCode lacks --append-system-prompt-file; append on_init to
-		// the CLAUDE.md that OpenCode reads natively.
-		configDir := backend.ConfigDir()
-		runner.SSH(ctx, taskName, "bash", "-c", runner.AsUser("mkdir -p ~/"+configDir))
-		claudemdDest := home + "/" + configDir + "/CLAUDE.md"
-		if err := runner.Cp(ctx, taskName, tmpFile.Name(), taskName+":"+home+"/system-prompt-tmp.md"); err != nil {
-			return fmt.Errorf("copying system prompt: %w", err)
+		// OpenCode reads ~/.claude/CLAUDE.md as a global fallback (when no
+		// AGENTS.md exists). Append the on_init prompt there.
+		if err := runner.SSH(ctx, taskName, "bash", "-c", runner.AsUser("mkdir -p ~/.claude")); err != nil {
+			return fmt.Errorf("creating .claude dir: %w", err)
 		}
-		if err := runner.SSH(ctx, taskName, "bash", "-c", runner.AsUser(fmt.Sprintf("cat %s/system-prompt-tmp.md >> %s && rm %s/system-prompt-tmp.md", home, claudemdDest, home))); err != nil {
-			return fmt.Errorf("appending system prompt to CLAUDE.md: %w", err)
+		claudemdDest := home + "/.claude/CLAUDE.md"
+		if err := copyToSandboxAsUser(ctx, runner, taskName, tmpFile.Name(), claudemdDest); err != nil {
+			return fmt.Errorf("copying system prompt: %w", err)
 		}
 		return nil
 	}
@@ -440,6 +439,19 @@ func writeSystemPrompt(ctx context.Context, runner sandbox.Runner, backend agent
 		return fmt.Errorf("fixing system prompt permissions: %w", err)
 	}
 
+	return nil
+}
+
+// copyToSandboxAsUser copies a local file to the sandbox and fixes ownership
+// so the sandbox user can read it. This handles the podman case where cp runs
+// as root but the sandbox user is non-root.
+func copyToSandboxAsUser(ctx context.Context, runner sandbox.Runner, sbx, localPath, remotePath string) error {
+	if err := runner.Cp(ctx, sbx, localPath, sbx+":"+remotePath); err != nil {
+		return err
+	}
+	fixCmd := fmt.Sprintf("chown $(stat -c '%%U:%%G' %s) %s 2>/dev/null; chmod a+r %s",
+		runner.UserHome(), remotePath, remotePath)
+	_ = runner.SSH(ctx, sbx, "bash", "-c", fixCmd)
 	return nil
 }
 

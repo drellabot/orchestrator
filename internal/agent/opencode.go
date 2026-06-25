@@ -44,8 +44,9 @@ stdbuf -oL opencode run --dangerously-skip-permissions \
 }
 
 func (b *openCode) MCPAddCmd(name, transport, url, scope string) string {
-	// OpenCode uses config-based MCP registration.
-	// Write an opencode.json in the project root with the MCP server config.
+	// OpenCode uses config-based MCP registration via the global config
+	// at ~/.config/opencode/opencode.json (project-level configs are merged
+	// on top, but the global config works for all projects).
 	mcpType := "remote"
 	if transport == "stdio" {
 		mcpType = "local"
