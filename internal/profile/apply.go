@@ -30,6 +30,13 @@ func Apply(ctx context.Context, p *Profile, runner sandbox.Runner, backend agent
 	if err := writeToSandbox(ctx, runner, sbx, claudemd, sbx+":"+home+"/.claude/CLAUDE.md"); err != nil {
 		return fmt.Errorf("writing CLAUDE.md: %w", err)
 	}
+	// For OpenCode, also write to the workspace project root (OpenCode
+	// loads project-level CLAUDE.md from the --dir directory).
+	if backend.Name() == "opencode" {
+		if err := writeToSandbox(ctx, runner, sbx, claudemd, sbx+":"+home+"/workspace/CLAUDE.md"); err != nil {
+			return fmt.Errorf("writing workspace CLAUDE.md: %w", err)
+		}
+	}
 
 	// 2. Copy settings.json if present
 	if p.Settings != "" {
@@ -43,6 +50,10 @@ func Apply(ctx context.Context, p *Profile, runner sandbox.Runner, backend agent
 	// is a harmless no-op error since the SSH user already owns the files).
 	fixCmd := "chown -R $(stat -c '%U:%G' " + home + ") " + home + "/.claude 2>/dev/null || true"
 	_ = runner.SSH(ctx, sbx, "bash", "-c", fixCmd)
+	if backend.Name() == "opencode" {
+		fixCmd = "chown -R $(stat -c '%U:%G' " + home + ") " + home + "/workspace/CLAUDE.md " + home + "/workspace/opencode.json 2>/dev/null || true"
+		_ = runner.SSH(ctx, sbx, "bash", "-c", fixCmd)
+	}
 
 	// 3. Register MCP servers from mcp.yaml
 	if p.MCP != nil {

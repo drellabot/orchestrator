@@ -187,14 +187,20 @@ are parsed. Both backends produce the same human-readable output for
 |---------|---------------|------------|
 | Install | `curl -fsSL https://claude.ai/install.sh \| bash` | `curl -fsSL https://opencode.ai/install \| bash` |
 | Runtime | Node.js | Standalone binary (Go) |
-| MCP registration | `claude mcp add` CLI | `opencode.json` config file |
-| System prompt | `--append-system-prompt-file` | Merged into CLAUDE.md |
+| MCP registration | `claude mcp add` CLI | `~/workspace/opencode.json` |
+| System prompt | `--append-system-prompt-file` | `~/workspace/CLAUDE.md` + prepend to task |
+| Working directory | `$HOME` | `~/workspace` (via `--dir`) |
 | Transcript format | `stream-json` | `--format json` |
 
 When using the podman sandbox backend, the agent is installed automatically in
 the container. When using gjoll, the agent must be installed by the `.tf` file's
 `init_script` output — see the [gjoll examples](https://github.com/drellabot/gjoll/tree/main/examples)
 for both Claude Code and OpenCode variants.
+
+OpenCode runs with `--dir ~/workspace` and loads its project config
+(`CLAUDE.md`, `opencode.json`) from that directory. The `on_init` system prompt
+is both written to `~/workspace/CLAUDE.md` and prepended to the task description
+to ensure the agent always sees the full instructions.
 
 **Per-task override.** You can override the backend for a single task using the
 `--agent-backend` flag:

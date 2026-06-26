@@ -268,6 +268,10 @@ func executeTask(ctx context.Context, taskName, taskDescription string, taskDir 
 	systemPromptFile := home + "/system-prompt.md"
 	if backend.Name() == "opencode" {
 		systemPromptFile = ""
+		// OpenCode has no --append-system-prompt-file equivalent. Prepend
+		// on_init to the task description so the agent sees the full
+		// instructions even if CLAUDE.md loading fails.
+		taskDescription = prompts.OnInit + "\n\n" + taskDescription
 	}
 	runScript := backend.BuildRunScript(taskDescription, continueSession, systemPromptFile)
 
@@ -400,9 +404,8 @@ func setupSandboxDefault(ctx context.Context, runner sandbox.Runner, backend age
 
 // writeSystemPrompt writes the on_init system prompt into the sandbox.
 // For claude-code: writes ~/system-prompt.md (used via --append-system-prompt-file).
-// For opencode: appends to ~/.claude/CLAUDE.md (OpenCode reads this as a
-// fallback when no AGENTS.md exists, and has no --append-system-prompt-file
-// equivalent).
+// For opencode: writes ~/workspace/CLAUDE.md (project root, loaded by OpenCode
+// when run with --dir ~/workspace).
 func writeSystemPrompt(ctx context.Context, runner sandbox.Runner, backend agent.Backend, taskName string) error {
 	tmpFile, err := os.CreateTemp("", "prompt-*.md")
 	if err != nil {
@@ -419,14 +422,9 @@ func writeSystemPrompt(ctx context.Context, runner sandbox.Runner, backend agent
 	home := runner.UserHome()
 
 	if backend.Name() == "opencode" {
-		// OpenCode reads ~/.claude/CLAUDE.md as a global fallback (when no
-		// AGENTS.md exists). Append the on_init prompt there.
-		if err := runner.SSH(ctx, taskName, "bash", "-c", runner.AsUser("mkdir -p ~/.claude")); err != nil {
-			return fmt.Errorf("creating .claude dir: %w", err)
-		}
-		claudemdDest := home + "/.claude/CLAUDE.md"
-		if err := copyToSandboxAsUser(ctx, runner, taskName, tmpFile.Name(), claudemdDest); err != nil {
-			return fmt.Errorf("copying system prompt: %w", err)
+		dest := home + "/workspace/CLAUDE.md"
+		if err := copyToSandboxAsUser(ctx, runner, taskName, tmpFile.Name(), dest); err != nil {
+			return fmt.Errorf("copying system prompt to workspace: %w", err)
 		}
 		return nil
 	}

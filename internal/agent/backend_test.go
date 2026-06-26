@@ -68,6 +68,7 @@ func TestOpenCodeBuildRunScript(t *testing.T) {
 	}
 	for _, want := range []string{
 		"opencode run --dangerously-skip-permissions",
+		"--dir ~/workspace",
 		"--format json",
 		"--variant max",
 		"fix the bug",
@@ -112,8 +113,8 @@ func TestOpenCodeMCPAddCmd(t *testing.T) {
 	if !contains(cmd, "http://localhost:19090/mcp") {
 		t.Error("MCP config missing URL")
 	}
-	if !contains(cmd, "opencode.json") {
-		t.Error("MCP config should write opencode.json")
+	if !contains(cmd, "~/workspace/opencode.json") {
+		t.Error("MCP config should write to ~/workspace/opencode.json")
 	}
 }
 

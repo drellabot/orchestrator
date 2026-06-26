@@ -28,14 +28,17 @@ func (b *openCode) BuildRunScript(taskDescription string, continueSession bool, 
 		teeFlag = "-a"
 	}
 
-	// OpenCode lacks --append-system-prompt-file; we handle this by merging
-	// the system prompt into CLAUDE.md (which OpenCode reads natively) during
-	// sandbox setup. The systemPromptFile parameter is ignored here.
+	// --dir ~/workspace: run OpenCode in the workspace directory where
+	// CLAUDE.md and opencode.json are written during sandbox setup.
+	// The systemPromptFile parameter is ignored — OpenCode has no
+	// --append-system-prompt-file equivalent; instructions are loaded
+	// from CLAUDE.md in the project root (--dir).
 
 	return fmt.Sprintf(`#!/bin/bash
 source ~/.bashrc
 export PATH="$HOME/.opencode/bin:$PATH"
 stdbuf -oL opencode run --dangerously-skip-permissions \
+  --dir ~/workspace \
   --variant max \
   --format json \
   %s '%s' \
@@ -44,15 +47,15 @@ stdbuf -oL opencode run --dangerously-skip-permissions \
 }
 
 func (b *openCode) MCPAddCmd(name, transport, url, scope string) string {
-	// OpenCode uses config-based MCP registration via the global config
-	// at ~/.config/opencode/opencode.json (project-level configs are merged
-	// on top, but the global config works for all projects).
+	// OpenCode loads project-level config from opencode.json in the project
+	// root (~/workspace, set via --dir). Write there so MCP servers are
+	// available when the agent starts.
 	mcpType := "remote"
 	if transport == "stdio" {
 		mcpType = "local"
 	}
 	config := fmt.Sprintf(`{"mcp":{%q:{"type":%q,"url":%q}}}`, name, mcpType, url)
-	return fmt.Sprintf(`mkdir -p ~/.config/opencode && cat > ~/.config/opencode/opencode.json << 'MCPEOF'
+	return fmt.Sprintf(`cat > ~/workspace/opencode.json << 'MCPEOF'
 %s
 MCPEOF`, config)
 }
